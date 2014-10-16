@@ -203,7 +203,7 @@ public interface CloudFoundryOperations {
 	/**
 	 * Delete routes that do not have any application which is assigned to them.
 	 */
-	void deleteOrphanedRoutes();
+	List<CloudRoute> deleteOrphanedRoutes();
 
 	/**
 	 * Upload an application.

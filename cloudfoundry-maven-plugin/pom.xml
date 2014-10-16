@@ -1,15 +1,15 @@
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.cloudfoundry</groupId>
 	<artifactId>cf-maven-plugin</artifactId>
 	<packaging>maven-plugin</packaging>
-    <version>1.2.5.KIWI-RELEASE</version>
-    <name>Cloud Foundry Maven Plugin</name>
+	<version>1.0.5.OAAS-SNAPSHOT</version>
+	<name>Cloud Foundry Maven Plugin for OaaS</name>
 	<url>https://github.com/cloudfoundry/cf-java-client/cloudfoundry-maven-plugin</url>
 
 	<description>
-		A Maven plugin that makes it easy to deploy Maven-based applications to Cloud Foundry instances.
+		A Maven plugin that makes it easy to deploy Maven-based applications to Cloud Foundry instances (Oaas: Added getFile).
 	</description>
 
 	<prerequisites>
@@ -102,7 +102,7 @@
 		<dependency>
 			<groupId>org.cloudfoundry</groupId>
 			<artifactId>cloudfoundry-client-lib</artifactId>
-            <version>1.2.5.KIWI-RELEASE</version>
+            <version>1.0.5.OAAS-SNAPSHOT</version>
         </dependency>
 
 		<dependency>
@@ -198,14 +198,25 @@
 
 	<distributionManagement>
 		<repository>
-			<id>sonatype-ossrh-staging</id>
-			<name>Sonatype OSSRH</name>
-			<url>http://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+			<id>ilog-optim-releases</id>
+			<url>http://optbup01r.francelab.fr.ibm.com:8081/nexus/content/repositories/ilog-optim-releases
+			</url>
 		</repository>
 		<snapshotRepository>
-			<id>spring-snapshot</id>
-			<name>Spring Snapshot Repository</name>
-			<url>s3://maven.springframework.org/snapshot</url>
+			<id>ilog-optim-snapshots</id>
+			<!-- see Story https://rtcoptim.ilogfr-bso.fr.ibm.com:9443/jazz/resource/itemName/com.ibm.team.workitem.WorkItem/4296 -->
+			<uniqueVersion>true</uniqueVersion>
+			<url>http://optbup01r.francelab.fr.ibm.com:8081/nexus/content/repositories/ilog-optim-snapshots
+			</url>
 		</snapshotRepository>
+		<site>
+			<id>ilog-optim-site</id>
+			<url>file:///var/www/html/trunk</url>
+		</site>
 	</distributionManagement>
+	<!-- <distributionManagement> <repository> <id>sonatype-ossrh-staging</id> 
+		<name>Sonatype OSSRH</name> <url>http://oss.sonatype.org/service/local/staging/deploy/maven2</url> 
+		</repository> <snapshotRepository> <id>spring-snapshot</id> <name>Spring 
+		Snapshot Repository</name> <url>s3://maven.springframework.org/snapshot</url> 
+		</snapshotRepository> </distributionManagement> -->
 </project>
