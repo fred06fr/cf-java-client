@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 	<groupId>org.cloudfoundry</groupId>
 	<artifactId>cloudfoundry-client-lib</artifactId>
-    <version>1.0.5.OAAS-SNAPSHOT</version>
+    <version>1.0.6.OAAS</version>
     <packaging>jar</packaging>
 	<name>Cloud Foundry Java Client Library</name>
 	<description>A Cloud Foundry client library for Java</description>
@@ -411,6 +411,7 @@
 		</testResources>
 	</build>
 
+<!--  
 	<distributionManagement>
 		<repository>
 			<id>sonatype-ossrh-staging</id>
@@ -423,6 +424,27 @@
 			<url>s3://maven.springframework.org/snapshot</url>
 		</snapshotRepository>
 	</distributionManagement>
+-->
+
+	<distributionManagement>
+		<repository>
+			<id>ilog-optim-releases</id>
+			<url>http://optbup01r.francelab.fr.ibm.com:8081/nexus/content/repositories/ilog-optim-releases
+			</url>
+		</repository>
+		<snapshotRepository>
+			<id>ilog-optim-snapshots</id>
+			<!-- see Story https://rtcoptim.ilogfr-bso.fr.ibm.com:9443/jazz/resource/itemName/com.ibm.team.workitem.WorkItem/4296 -->
+			<uniqueVersion>true</uniqueVersion>
+			<url>http://optbup01r.francelab.fr.ibm.com:8081/nexus/content/repositories/ilog-optim-snapshots
+			</url>
+		</snapshotRepository>
+		<site>
+			<id>ilog-optim-site</id>
+			<url>file:///var/www/html/trunk</url>
+		</site>
+	</distributionManagement>
+
 
 	<developers>
 		<developer>
