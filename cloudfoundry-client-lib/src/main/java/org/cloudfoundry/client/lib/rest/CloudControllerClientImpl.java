@@ -16,27 +16,6 @@
 
 package org.cloudfoundry.client.lib.rest;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.Socket;
-import java.net.SocketException;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLDecoder;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.UUID;
-import java.util.zip.ZipFile;
-
-import javax.websocket.ClientEndpointConfig;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.cloudfoundry.client.lib.ApplicationLogListener;
@@ -99,6 +78,26 @@ import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.ResponseExtractor;
 import org.springframework.web.client.RestTemplate;
 
+import javax.websocket.ClientEndpointConfig;
+import java.io.File;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.Socket;
+import java.net.SocketException;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.zip.ZipFile;
+
 /**
  * Abstract implementation of the CloudControllerClient intended to serve as the base.
  *
@@ -115,22 +114,14 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 
 	private static final String LOGS_LOCATION = "logs";
 	private static final int JOB_POLLING_PERIOD = 5000; // matches that of gcf
-
-	private OauthClient oauthClient;
-
-	private CloudSpace sessionSpace;
-
-	private CloudEntityResourceMapper resourceMapper = new CloudEntityResourceMapper();
-
-	private RestTemplate restTemplate;
-
-	private URL cloudControllerUrl;
-
-	private LoggregatorClient loggregatorClient;
-
-	protected CloudCredentials cloudCredentials;
-
 	private final Log logger;
+	protected CloudCredentials cloudCredentials;
+	private OauthClient oauthClient;
+	private CloudSpace sessionSpace;
+	private CloudEntityResourceMapper resourceMapper = new CloudEntityResourceMapper();
+	private RestTemplate restTemplate;
+	private URL cloudControllerUrl;
+	private LoggregatorClient loggregatorClient;
 
 	/**
 	 * Only for unit tests. This works around the fact that the initialize method is called within the constructor and
@@ -141,8 +132,8 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	}
 
 	public CloudControllerClientImpl(URL cloudControllerUrl, RestTemplate restTemplate,
-	                                 OauthClient oauthClient, LoggregatorClient loggregatorClient,
-	                                 CloudCredentials cloudCredentials, CloudSpace sessionSpace) {
+									 OauthClient oauthClient, LoggregatorClient loggregatorClient,
+									 CloudCredentials cloudCredentials, CloudSpace sessionSpace) {
 		logger = LogFactory.getLog(getClass().getName());
 
 		initialize(cloudControllerUrl, restTemplate, oauthClient, loggregatorClient, cloudCredentials);
@@ -151,8 +142,8 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	}
 
 	public CloudControllerClientImpl(URL cloudControllerUrl, RestTemplate restTemplate,
-	                                 OauthClient oauthClient, LoggregatorClient loggregatorClient,
-	                                 CloudCredentials cloudCredentials, String orgName, String spaceName) {
+									 OauthClient oauthClient, LoggregatorClient loggregatorClient,
+									 CloudCredentials cloudCredentials, String orgName, String spaceName) {
 		logger = LogFactory.getLog(getClass().getName());
 		CloudControllerClientImpl tempClient =
 				new CloudControllerClientImpl(cloudControllerUrl, restTemplate,
@@ -164,7 +155,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	}
 
 	private void initialize(URL cloudControllerUrl, RestTemplate restTemplate, OauthClient oauthClient,
-	                        LoggregatorClient loggregatorClient, CloudCredentials cloudCredentials) {
+							LoggregatorClient loggregatorClient, CloudCredentials cloudCredentials) {
 		Assert.notNull(cloudControllerUrl, "CloudControllerUrl cannot be null");
 		Assert.notNull(restTemplate, "RestTemplate cannot be null");
 		Assert.notNull(oauthClient, "OauthClient cannot be null");
@@ -262,16 +253,50 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 
 	public void registerRestLogListener(RestLogCallback callBack) {
 		if (getRestTemplate() instanceof LoggingRestTemplate) {
-			((LoggingRestTemplate)getRestTemplate()).registerRestLogListener(callBack);
+			((LoggingRestTemplate) getRestTemplate()).registerRestLogListener(callBack);
 		}
 	}
 
 	public void unRegisterRestLogListener(RestLogCallback callBack) {
 		if (getRestTemplate() instanceof LoggingRestTemplate) {
-			((LoggingRestTemplate)getRestTemplate()).unRegisterRestLogListener(callBack);
+			((LoggingRestTemplate) getRestTemplate()).unRegisterRestLogListener(callBack);
 		}
 	}
-	
+
+	/**
+	 * Delete routes that do not have any application which is assigned to them.
+	 */
+	@Override
+	public List<CloudRoute> deleteOrphanedRoutes() {
+		List<CloudRoute> orphanRoutes = new ArrayList<>();
+		for (CloudDomain cloudDomain : getDomainsForOrg()) {
+			orphanRoutes.addAll(fetchOrphanRoutes(cloudDomain.getName()));
+		}
+
+		List<CloudRoute> deletedCloudRoutes = new ArrayList<>();
+		for (CloudRoute orphanRoute : orphanRoutes) {
+			deleteRoute(orphanRoute.getHost(), orphanRoute.getDomain().getName());
+			deletedCloudRoutes.add(orphanRoute);
+		}
+
+		return deletedCloudRoutes;
+	}
+
+	private List<CloudRoute> fetchOrphanRoutes(String domainName) {
+		List<CloudRoute> orphanRoutes = new ArrayList<>();
+		for (CloudRoute cloudRoute : getRoutes(domainName)) {
+			if (isOrphanRoute(cloudRoute)) {
+				orphanRoutes.add(cloudRoute);
+			}
+		}
+
+		return orphanRoutes;
+	}
+
+	private boolean isOrphanRoute(CloudRoute cloudRoute) {
+		return cloudRoute.getAppsUsingRoute() == 0;
+	}
+
 	/**
 	 * Returns null if no further content is available. Two errors that will
 	 * lead to a null value are 404 Bad Request errors, which are handled in the
@@ -281,10 +306,9 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	 * that any other CloudFoundryException or RestClientException exception not
 	 * related to the two errors mentioned above may still be thrown (e.g. 500
 	 * level errors, Unauthorized or Forbidden exceptions, etc..)
-	 * 
+	 *
 	 * @return content if available, which may contain multiple lines, or null
-	 *         if no further content is available.
-	 * 
+	 * if no further content is available.
 	 */
 	public String getStagingLogs(StartingInfo info, int offset) {
 		String stagingFile = info.getStagingFile();
@@ -311,7 +335,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 					throw e;
 				}
 			} catch (ResourceAccessException e) {
-				// Likely read timeout, the directory server won't serve 
+				// Likely read timeout, the directory server won't serve
 				// the content again
 				logger.debug("Caught exception while fetching staging logs. Aborting. Caught:" + e,
 						e);
@@ -341,76 +365,6 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		}
 	}
 
-	private class CloudFoundryClientHttpRequestFactory implements ClientHttpRequestFactory {
-
-		private ClientHttpRequestFactory delegate;
-		private Integer defaultSocketTimeout = 0;
-
-		public CloudFoundryClientHttpRequestFactory(ClientHttpRequestFactory delegate) {
-			this.delegate = delegate;
-			captureDefaultReadTimeout();
-		}
-
-		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
-			ClientHttpRequest request = delegate.createRequest(uri, httpMethod);
-
-			String authorizationHeader = oauthClient.getAuthorizationHeader();
-			if (authorizationHeader != null) {
-				request.getHeaders().add(AUTHORIZATION_HEADER_KEY, authorizationHeader);
-			}
-
-			if (cloudCredentials != null && cloudCredentials.getProxyUser() != null) {
-				request.getHeaders().add(PROXY_USER_HEADER_KEY, cloudCredentials.getProxyUser());
-			}
-
-			return request;
-		}
-
-		private void captureDefaultReadTimeout() {
-			if (delegate instanceof HttpComponentsClientHttpRequestFactory) {
-				HttpComponentsClientHttpRequestFactory httpRequestFactory =
-						(HttpComponentsClientHttpRequestFactory) delegate;
-				defaultSocketTimeout = (Integer) httpRequestFactory
-						.getHttpClient().getParams()
-						.getParameter("http.socket.timeout");
-				if (defaultSocketTimeout == null) {
-					try {
-						defaultSocketTimeout = new Socket().getSoTimeout();
-					} catch (SocketException e) {
-						defaultSocketTimeout = 0;
-					}
-				}
-			}
-		}
-
-		public void increaseReadTimeoutForStreamedTailedLogs(int timeout) {
-			// May temporary increase read timeout on other unrelated concurrent
-			// threads, but per-request read timeout don't seem easily
-			// accessible
-			if (delegate instanceof HttpComponentsClientHttpRequestFactory) {
-				HttpComponentsClientHttpRequestFactory httpRequestFactory =
-						(HttpComponentsClientHttpRequestFactory) delegate;
-
-				if (timeout > 0) {
-					httpRequestFactory.setReadTimeout(timeout);
-				} else {
-					httpRequestFactory
-							.setReadTimeout(defaultSocketTimeout);
-				}
-			}
-		}
-	}
-
-	public static class CloudFoundryFormHttpMessageConverter extends FormHttpMessageConverter {
-		@Override
-		protected String getFilename(Object part) {
-			if (part instanceof UploadApplicationPayload) {
-				return ((UploadApplicationPayload) part).getArchive().getFilename();
-			}
-			return super.getFilename(part);
-		}
-	}
-
 	protected Map<String, String> doGetLogs(String urlPath, String appName, String instance) {
 		Object appId = getFileAppId(appName);
 		String logFiles = doGetFile(urlPath, appId, instance, LOGS_LOCATION, -1, -1);
@@ -423,7 +377,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			}
 		}
 		Map<String, String> logs = new HashMap<String, String>(fileNames.size());
-		for(String fileName : fileNames) {
+		for (String fileName : fileNames) {
 			String logFile = LOGS_LOCATION + "/" + fileName;
 			logs.put(logFile, doGetFile(urlPath, appId, instance, logFile, -1, -1));
 		}
@@ -432,7 +386,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 
 	@SuppressWarnings("unchecked")
 	protected void doOpenFile(String urlPath, Object app, int instanceIndex, String filePath,
-			ClientHttpResponseCallback callback) {
+							  ClientHttpResponseCallback callback) {
 		getRestTemplate().execute(getUrl(urlPath), HttpMethod.GET, null, new ResponseExtractorWrapper(callback), app,
 				String.valueOf(instanceIndex), filePath);
 	}
@@ -527,7 +481,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	@SuppressWarnings("unchecked")
 	public CloudInfo getInfo() {
 		// info comes from two end points: /info and /v2/info
-		
+
 		String infoV2Json = getRestTemplate().getForObject(getUrl("/v2/info"), String.class);
 		Map<String, Object> infoV2Map = JsonUtil.convertJsonToMap(infoV2Json);
 
@@ -553,10 +507,10 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			usage = new CloudInfo.Usage(usageMap);
 			debug = CloudUtil.parse(Boolean.class, infoMap.get("allow_debug"));
 		}
-		
+
 		String loggregatorEndpoint = CloudUtil.parse(String.class, infoV2Map.get("logging_endpoint"));
 
-		return new CloudInfo(name, support, authorizationEndpoint, build, version, (String)userMap.get("user_name"),
+		return new CloudInfo(name, support, authorizationEndpoint, build, version, (String) userMap.get("user_name"),
 				description, limits, usage, debug, loggregatorEndpoint);
 	}
 
@@ -625,7 +579,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		}
 		return services;
 	}
-	
+
 	public void createService(CloudService service) {
 		assertSpaceProvided("create service");
 		Assert.notNull(service, "Service must not be null");
@@ -656,7 +610,18 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		throw new IllegalArgumentException("Service plan " + service.getPlan() + " not found");
 	}
 
+
+	@Override
 	public void createUserProvidedService(CloudService service, Map<String, Object> credentials) {
+		createUserProvidedServiceDelegate(service, credentials, "");
+	}
+
+	@Override
+	public void createUserProvidedService(CloudService service, Map<String, Object> credentials, String syslogDrainUrl) {
+		createUserProvidedServiceDelegate(service, credentials, syslogDrainUrl);
+	}
+
+	private void createUserProvidedServiceDelegate(CloudService service, Map<String, Object> credentials, String syslogDrainUrl) {
 		assertSpaceProvided("create service");
 		Assert.notNull(credentials, "Service credentials must not be null");
 		Assert.notNull(service, "Service must not be null");
@@ -666,10 +631,14 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		Assert.isNull(service.getVersion(), "Service version is not valid for user-provided services");
 		Assert.isNull(service.getPlan(), "Service plan is not valid for user-provided services");
 
-		HashMap<String, Object> serviceRequest = new HashMap<String, Object>();
+		HashMap<String, Object> serviceRequest = new HashMap<>();
 		serviceRequest.put("space_guid", sessionSpace.getMeta().getGuid());
 		serviceRequest.put("name", service.getName());
 		serviceRequest.put("credentials", credentials);
+		if (syslogDrainUrl != null && !syslogDrainUrl.equals("")) {
+			serviceRequest.put("syslog_drain_url", syslogDrainUrl);
+		}
+
 		getRestTemplate().postForObject(getUrl("/v2/user_provided_service_instances"), serviceRequest, String.class);
 	}
 
@@ -769,7 +738,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			int running = getRunningInstances(appId,
 					CloudApplication.AppState.valueOf(
 							CloudEntityResourceMapper.getEntityAttribute(resource, "state", String.class)));
-			((Map<String, Object>)resource.get("entity")).put("running_instances", running);
+			((Map<String, Object>) resource.get("entity")).put("running_instances", running);
 			cloudApp = resourceMapper.mapResource(resource, CloudApplication.class);
 			cloudApp.setUris(findApplicationUris(cloudApp.getMeta().getGuid()));
 		}
@@ -781,7 +750,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		ApplicationStats appStats = doGetApplicationStats(appId, appState);
 		if (appStats != null && appStats.getRecords() != null) {
 			for (InstanceStats inst : appStats.getRecords()) {
-				if (InstanceState.RUNNING == inst.getState()){
+				if (InstanceState.RUNNING == inst.getState()) {
 					running++;
 				}
 			}
@@ -817,12 +786,12 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	}
 
 	public void createApplication(String appName, Staging staging, Integer memory, List<String> uris,
-	                              List<String> serviceNames) {
+								  List<String> serviceNames) {
 		createApplication(appName, staging, null, memory, uris, serviceNames);
 	}
 
 	public void createApplication(String appName, Staging staging, Integer disk, Integer memory,
-	                              List<String> uris, List<String> serviceNames) {
+								  List<String> uris, List<String> serviceNames) {
 		HashMap<String, Object> appRequest = new HashMap<String, Object>();
 		appRequest.put("space_guid", sessionSpace.getMeta().getGuid());
 		appRequest.put("name", appName);
@@ -916,7 +885,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 
 	protected void extractUriInfo(Map<String, UUID> domains, String uri, Map<String, String> uriInfo) {
 		URI newUri = URI.create(uri);
-		String authority = newUri.getScheme() != null ? newUri.getAuthority(): newUri.getPath();
+		String authority = newUri.getScheme() != null ? newUri.getAuthority() : newUri.getPath();
 		for (String domain : domains.keySet()) {
 			if (authority != null && authority.endsWith(domain)) {
 				String previousDomain = uriInfo.get("domainName");
@@ -1059,13 +1028,14 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		UploadApplicationPayload payload = new UploadApplicationPayload(archive, knownRemoteResources);
 		callback.onProcessMatchedResources(payload.getTotalUncompressedSize());
 		HttpEntity<?> entity = generatePartialResourceRequest(payload, knownRemoteResources);
-		ResponseEntity<Map<String,Map<String,String>>> responseEntity =
-		            getRestTemplate().exchange(getUrl("/v2/apps/{guid}/bits?async=true"), HttpMethod.PUT, entity, 
-		                                        new ParameterizedTypeReference<Map<String, Map<String,String>>>() {}, appId);
+		ResponseEntity<Map<String, Map<String, String>>> responseEntity =
+				getRestTemplate().exchange(getUrl("/v2/apps/{guid}/bits?async=true"), HttpMethod.PUT, entity,
+						new ParameterizedTypeReference<Map<String, Map<String, String>>>() {
+						}, appId);
 		processAsyncJob(responseEntity, callback);
 	}
 
-	private void processAsyncJob(ResponseEntity<Map<String,Map<String,String>>> jobCreationEntity, UploadStatusCallback callback) {
+	private void processAsyncJob(ResponseEntity<Map<String, Map<String, String>>> jobCreationEntity, UploadStatusCallback callback) {
 		Map<String, String> jobEntity = jobCreationEntity.getBody().get("entity");
 		String jobStatus;
 		do {
@@ -1088,7 +1058,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			jobEntity = jobProgressEntity.getBody().get("entity");
 		} while (!jobStatus.equals("finished"));
 	}
-	
+
 	private CloudResources getKnownRemoteResources(ApplicationArchive archive) throws IOException {
 		CloudResources archiveResources = new CloudResources(archive);
 		String json = JsonUtil.convertToJson(archiveResources);
@@ -1096,13 +1066,13 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		headers.setContentType(JsonUtil.JSON_MEDIA_TYPE);
 		HttpEntity<String> requestEntity = new HttpEntity<String>(json, headers);
 		ResponseEntity<String> responseEntity =
-			getRestTemplate().exchange(getUrl("/v2/resource_match"), HttpMethod.PUT, requestEntity, String.class);
+				getRestTemplate().exchange(getUrl("/v2/resource_match"), HttpMethod.PUT, requestEntity, String.class);
 		List<CloudResource> cloudResources = JsonUtil.convertJsonToCloudResourceList(responseEntity.getBody());
 		return new CloudResources(cloudResources);
 	}
 
 	private HttpEntity<MultiValueMap<String, ?>> generatePartialResourceRequest(UploadApplicationPayload application,
-			CloudResources knownRemoteResources) throws IOException {
+																				CloudResources knownRemoteResources) throws IOException {
 		MultiValueMap<String, Object> body = new LinkedMultiValueMap<String, Object>(2);
 		body.add("application", application);
 		ObjectMapper mapper = new ObjectMapper();
@@ -1208,8 +1178,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 				CloudService cloudService = getService(serviceName);
 				if (cloudService != null) {
 					addServices.add(cloudService.getMeta().getGuid());
-				}
-				else {
+				} else {
 					throw new CloudFoundryException(HttpStatus.NOT_FOUND, "Service with name " + serviceName +
 							" not found in current space " + sessionSpace.getName());
 				}
@@ -1422,22 +1391,26 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		doDeleteDomain(domainGuid);
 	}
 
+	@Override
 	public void removeDomain(String domainName) {
 		deleteDomain(domainName);
 	}
 
+	@Override
 	public List<CloudRoute> getRoutes(String domainName) {
 		assertSpaceProvided("get routes for domain");
 		UUID domainGuid = getDomainGuid(domainName, true);
 		return doGetRoutes(domainGuid);
 	}
 
+	@Override
 	public void addRoute(String host, String domainName) {
 		assertSpaceProvided("add route for domain");
 		UUID domainGuid = getDomainGuid(domainName, true);
 		doAddRoute(host, domainGuid);
 	}
 
+	@Override
 	public void deleteRoute(String host, String domainName) {
 		assertSpaceProvided("delete route for domain");
 		UUID domainGuid = getDomainGuid(domainName, true);
@@ -1587,7 +1560,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 	}
 
 	@SuppressWarnings("unchecked")
-	private UUID getServiceBindingId(UUID appId, UUID serviceId ) {
+	private UUID getServiceBindingId(UUID appId, UUID serviceId) {
 		Map<String, Object> urlVars = new HashMap<String, Object>();
 		urlVars.put("guid", appId);
 		List<Map<String, Object>> resourceList = getAllResources("/v2/apps/{guid}/service_bindings", urlVars);
@@ -1634,31 +1607,6 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		return loggregatorClient.connectToLoggregator(endpoint, mode, appId, listener, configurator);
 	}
 
-	private class AccumulatingApplicationLogListener implements ApplicationLogListener {
-		private List<ApplicationLog> logs = new ArrayList<ApplicationLog>();
-
-		public void onMessage(ApplicationLog log) {
-			logs.add(log);
-		}
-
-		public void onError(Throwable exception) {
-			synchronized (this) {
-				this.notify();
-			}
-		}
-
-		public void onComplete() {
-			synchronized (this) {
-				this.notify();
-			}
-		}
-
-		public List<ApplicationLog> getLogs() {
-			Collections.sort(logs);
-			return logs;
-		}
-	}
-
 	private Map<String, Object> findApplicationResource(UUID appGuid, boolean fetchServiceInfo) {
 		Map<String, Object> urlVars = new HashMap<String, Object>();
 		String urlPath = "/v2/apps/{app}?inline-relations-depth=1";
@@ -1668,7 +1616,6 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		return processApplicationResource(JsonUtil.convertJsonToMap(resp), fetchServiceInfo);
 	}
 
-	
 	private Map<String, Object> findApplicationResource(String appName, boolean fetchServiceInfo) {
 		Map<String, Object> urlVars = new HashMap<String, Object>();
 		String urlPath = "/v2";
@@ -1680,12 +1627,12 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		urlPath = urlPath + "/apps?inline-relations-depth=1&q={q}";
 
 		List<Map<String, Object>> allResources = getAllResources(urlPath, urlVars);
-		if(!allResources.isEmpty()) {
+		if (!allResources.isEmpty()) {
 			return processApplicationResource(allResources.get(0), fetchServiceInfo);
 		}
 		return null;
 	}
-	
+
 	private Map<String, Object> processApplicationResource(Map<String, Object> resource, boolean fetchServiceInfo) {
 		if (fetchServiceInfo) {
 			fillInEmbeddedResource(resource, "service_bindings", "service_instance");
@@ -1699,7 +1646,7 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		Map<String, Object> urlVars = new HashMap<String, Object>();
 		urlVars.put("app", appGuid);
 		List<Map<String, Object>> resourceList = getAllResources(urlPath, urlVars);
-		List<String> uris =  new ArrayList<String>();
+		List<String> uris = new ArrayList<String>();
 		for (Map<String, Object> resource : resourceList) {
 			Map<String, Object> domainResource = CloudEntityResourceMapper.getEmbeddedResource(resource, "domain");
 			String host = CloudEntityResourceMapper.getEntityAttribute(resource, "host", String.class);
@@ -1728,9 +1675,10 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			try {
 				byte[] decodedBytes = new sun.misc.BASE64Decoder().decodeBuffer(encodedString);
 				userJson = new String(decodedBytes, 0, decodedBytes.length, "UTF-8");
-			} catch (IOException e) {}
+			} catch (IOException e) {
+			}
 		}
-		return(JsonUtil.convertJsonToMap(userJson));
+		return (JsonUtil.convertJsonToMap(userJson));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -1762,8 +1710,8 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			fillInEmbeddedResource(embeddedResourceMap, tailPath);
 		} else if (embeddedResource instanceof List) {
 			List<Object> embeddedResourcesList = (List<Object>) embeddedResource;
-			for (Object r: embeddedResourcesList) {
-				fillInEmbeddedResource((Map<String, Object>)r, tailPath);
+			for (Object r : embeddedResourcesList) {
+				fillInEmbeddedResource((Map<String, Object>) r, tailPath);
 			}
 		} else {
 			// no way to proceed
@@ -1776,7 +1724,17 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 		Map<String, Object> entity = (Map<String, Object>) resource.get("entity");
 		return entity.containsKey(resourceKey) || entity.containsKey(resourceKey + "_url");
 	}
-	
+
+	public static class CloudFoundryFormHttpMessageConverter extends FormHttpMessageConverter {
+		@Override
+		protected String getFilename(Object part) {
+			if (part instanceof UploadApplicationPayload) {
+				return ((UploadApplicationPayload) part).getArchive().getFilename();
+			}
+			return super.getFilename(part);
+		}
+	}
+
 	private static class ResponseExtractorWrapper implements ResponseExtractor {
 
 		private ClientHttpResponseCallback callback;
@@ -1790,5 +1748,90 @@ public class CloudControllerClientImpl implements CloudControllerClient {
 			return null;
 		}
 
+	}
+
+	private class CloudFoundryClientHttpRequestFactory implements ClientHttpRequestFactory {
+
+		private ClientHttpRequestFactory delegate;
+		private Integer defaultSocketTimeout = 0;
+
+		public CloudFoundryClientHttpRequestFactory(ClientHttpRequestFactory delegate) {
+			this.delegate = delegate;
+			captureDefaultReadTimeout();
+		}
+
+		public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
+			ClientHttpRequest request = delegate.createRequest(uri, httpMethod);
+
+			String authorizationHeader = oauthClient.getAuthorizationHeader();
+			if (authorizationHeader != null) {
+				request.getHeaders().add(AUTHORIZATION_HEADER_KEY, authorizationHeader);
+			}
+
+			if (cloudCredentials != null && cloudCredentials.getProxyUser() != null) {
+				request.getHeaders().add(PROXY_USER_HEADER_KEY, cloudCredentials.getProxyUser());
+			}
+
+			return request;
+		}
+
+		private void captureDefaultReadTimeout() {
+			if (delegate instanceof HttpComponentsClientHttpRequestFactory) {
+				HttpComponentsClientHttpRequestFactory httpRequestFactory =
+						(HttpComponentsClientHttpRequestFactory) delegate;
+				defaultSocketTimeout = (Integer) httpRequestFactory
+						.getHttpClient().getParams()
+						.getParameter("http.socket.timeout");
+				if (defaultSocketTimeout == null) {
+					try {
+						defaultSocketTimeout = new Socket().getSoTimeout();
+					} catch (SocketException e) {
+						defaultSocketTimeout = 0;
+					}
+				}
+			}
+		}
+
+		public void increaseReadTimeoutForStreamedTailedLogs(int timeout) {
+			// May temporary increase read timeout on other unrelated concurrent
+			// threads, but per-request read timeout don't seem easily
+			// accessible
+			if (delegate instanceof HttpComponentsClientHttpRequestFactory) {
+				HttpComponentsClientHttpRequestFactory httpRequestFactory =
+						(HttpComponentsClientHttpRequestFactory) delegate;
+
+				if (timeout > 0) {
+					httpRequestFactory.setReadTimeout(timeout);
+				} else {
+					httpRequestFactory
+							.setReadTimeout(defaultSocketTimeout);
+				}
+			}
+		}
+	}
+
+	private class AccumulatingApplicationLogListener implements ApplicationLogListener {
+		private List<ApplicationLog> logs = new ArrayList<ApplicationLog>();
+
+		public void onMessage(ApplicationLog log) {
+			logs.add(log);
+		}
+
+		public void onError(Throwable exception) {
+			synchronized (this) {
+				this.notify();
+			}
+		}
+
+		public void onComplete() {
+			synchronized (this) {
+				this.notify();
+			}
+		}
+
+		public List<ApplicationLog> getLogs() {
+			Collections.sort(logs);
+			return logs;
+		}
 	}
 }

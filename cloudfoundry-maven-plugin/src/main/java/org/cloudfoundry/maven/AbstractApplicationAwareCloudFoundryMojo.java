@@ -16,15 +16,6 @@
  */
 package org.cloudfoundry.maven;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -32,23 +23,31 @@ import org.apache.maven.artifact.resolver.ArtifactNotFoundException;
 import org.apache.maven.artifact.resolver.ArtifactResolutionException;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.cloudfoundry.client.lib.CloudFoundryClient;
+import org.cloudfoundry.client.lib.CloudFoundryException;
 import org.cloudfoundry.client.lib.StartingInfo;
 import org.cloudfoundry.client.lib.domain.CloudApplication;
+import org.cloudfoundry.client.lib.domain.CloudDomain;
+import org.cloudfoundry.client.lib.domain.CloudService;
 import org.cloudfoundry.client.lib.domain.InstanceInfo;
 import org.cloudfoundry.client.lib.domain.InstanceState;
 import org.cloudfoundry.client.lib.domain.InstancesInfo;
 import org.cloudfoundry.maven.common.Assert;
-import org.cloudfoundry.client.lib.CloudFoundryClient;
-
-import org.cloudfoundry.client.lib.CloudFoundryException;
-import org.cloudfoundry.client.lib.domain.CloudDomain;
-import org.cloudfoundry.client.lib.domain.CloudService;
-
 import org.cloudfoundry.maven.common.CommonUtils;
 import org.cloudfoundry.maven.common.DefaultConstants;
 import org.cloudfoundry.maven.common.SystemProperties;
 import org.codehaus.plexus.util.StringUtils;
 import org.springframework.http.HttpStatus;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Abstract goal for the Cloud Foundry Maven plugin that bundles access to commonly
@@ -58,155 +57,146 @@ import org.springframework.http.HttpStatus;
  * @author Stephan Oudmaijer
  * @author Ali Moghadam
  * @author Scott Frederick
- *
  * @since 1.0.0
- *
  */
 @SuppressWarnings("UnusedDeclaration")
 abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFoundryMojo {
 	private static final int DEFAULT_APP_STARTUP_TIMEOUT = 5;
-
+	/**
+	 * @parameter default-value="${localRepository}"
+	 * @readonly
+	 * @required
+	 */
+	protected ArtifactRepository localRepository;
+	/**
+	 * @parameter default-value="${project.remoteArtifactRepositories}"
+	 * @readonly
+	 * @required
+	 */
+	protected java.util.List<ArtifactRepository> remoteRepositories;
 	/**
 	 * @parameter expression="${cf.appname}"
 	 */
 	private String appname;
-
+	/**
+	 * The number of deployed builds to retain as a fallback option.
+	 *
+	 * @parameter expression="${cf.retainNumberOfBuilds}" default-value="1"
+	 */
+	private Integer retainNumberOfBuilds;
+	/**
+	 * The application ID prefix to take into account when getting distinct builds of the same application.
+	 *
+	 * @parameter expression="${cf.appIdPrefix}" default-value="${project.artifactId}"
+	 */
+	private String appIdPrefix;
 	/**
 	 * @parameter expression="${cf.url}"
 	 */
 	private String url;
-
 	/**
 	 * @parameter expression="${cf.urls}"
 	 */
 	private List<String> urls;
-
 	/**
 	 * A string of the form groupId:artifactId:version:packaging[:classifier].
+	 *
 	 * @parameter expression = "${cf.artifact}" default-value="${project.groupId}:${project.artifactId}:${project.version}:${project.packaging}"
 	 */
 	private String artifact;
-
 	/**
 	 * The path of one of the following:
-	 *
+	 * <p/>
 	 * <ul>
-	 * 		<li>War file to deploy</li>
-	 * 		<li>Zip or Jar file to deploy</li>
-	 * 		<li>Exploded War directory</li>
-	 * 		<li>Directory containing a stand-alone application to deploy</li>
+	 * <li>War file to deploy</li>
+	 * <li>Zip or Jar file to deploy</li>
+	 * <li>Exploded War directory</li>
+	 * <li>Directory containing a stand-alone application to deploy</li>
 	 * </ul>
 	 *
 	 * @parameter expression = "${cf.path}"
 	 */
 	private File path;
-
 	/**
 	 * The start command to use for the application.
 	 *
 	 * @parameter expression = "${cf.command}"
 	 */
 	private String command;
-
 	/**
 	 * The buildpack to use for the application.
 	 *
 	 * @parameter expression = "${cf.buildpack}"
 	 */
 	private String buildpack;
-
 	/**
 	 * The stack to use for the application.
 	 *
 	 * @parameter expression = "${cf.stack}"
 	 */
 	private String stack;
-
 	/**
 	 * The health check timeout to use for the application.
 	 *
 	 * @parameter expression = "${cf.healthCheckTimeout}"
 	 */
 	private Integer healthCheckTimeout;
-
 	/**
 	 * The app startup timeout to use for the application.
 	 *
 	 * @parameter expression = "${cf.appStartupTimeout}"
 	 */
 	private Integer appStartupTimeout;
-
 	/**
 	 * Set the disk quota for the application
 	 *
 	 * @parameter expression="${cf.diskQuota}"
 	 */
 	private Integer diskQuota;
-
 	/**
 	 * Set the memory reservation for the application
 	 *
 	 * @parameter expression="${cf.memory}"
 	 */
 	private Integer memory;
-
 	/**
 	 * Set the expected number <N> of instances
 	 *
 	 * @parameter expression="${cf.instances}"
 	 */
 	private Integer instances;
-
 	/**
 	 * list of services to use by the application.
 	 *
 	 * @parameter expression="${services}"
 	 */
 	private List<CloudServiceWithUserProvided> services;
-
 	/**
 	 * list of domains to use by the application.
 	 *
 	 * @parameter expression="${domains}"
 	 */
 	private List<String> domains;
-
 	/**
 	 * Environment variables
 	 *
 	 * @parameter expression="${cf.env}"
 	 */
 	private Map<String, String> env = new HashMap<String, String>();
-
 	/**
 	 * Do not auto-start the application
 	 *
 	 * @parameter expression="${cf.no-start}"
 	 */
 	private Boolean noStart;
-
-	/** 
-	 * @parameter default-value="${localRepository}" 
-	 * @readonly
-	 * @required
-	 */
-	protected ArtifactRepository localRepository;
-
-	/** 
-	 * @parameter default-value="${project.remoteArtifactRepositories}" 
-	 * @readonly
-	 * @required
-	 */
-	protected java.util.List<ArtifactRepository> remoteRepositories;
-	
 	/**
-	* @component
-	*/
+	 * @component
+	 */
 	private ArtifactFactory artifactFactory;
 
 	/**
-	* @component
-	*/
+	 * @component
+	 */
 	private ArtifactResolver artifactResolver;
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -232,20 +222,30 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 	}
 
+	public Integer getNumberOfBuildsToRetain() {
+		final String property = getCommandlineProperty(SystemProperties.RETAIN_NUMBER_OF_BUILDS);
+		return property == null ? this.retainNumberOfBuilds : Integer.valueOf(property);
+	}
+
+	public String getAppIdPrefix() {
+		final String property = getCommandlineProperty(SystemProperties.APP_ID_PREFIX);
+		return property == null ? this.appIdPrefix : property;
+	}
+
 	/**
 	 * Environment properties can only be specified from the maven pom.
-	 *
+	 * <p/>
 	 * Example:
-	 *
+	 * <p/>
 	 * {code}
 	 * <env>
-	 *     <JAVA_OPTS>-XX:MaxPermSize=256m</JAVA_OPTS>
+	 * <JAVA_OPTS>-XX:MaxPermSize=256m</JAVA_OPTS>
 	 * </env>
 	 * {code}
 	 *
 	 * @return Returns the env, will never return Null.
 	 */
-	public Map<String,String> getEnv() {
+	public Map<String, String> getEnv() {
 		return this.env;
 	}
 
@@ -300,11 +300,11 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 	/**
 	 * Returns the memory-parameter.
-	 *
+	 * <p/>
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * If the value is not defined, null is returned.  Triggering an empty value
 	 * to be sent to the Cloud Controller where its default will be used.
 	 *
@@ -317,10 +317,9 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 	/**
 	 * Specifies the file or directory that shall be pushed to Cloud Foundry.
-	 *
+	 * <p/>
 	 * This property defaults to the Maven property
 	 * "${project.build.directory}/${project.build.finalName}.war"
-	 *
 	 *
 	 * @return null if not found.
 	 */
@@ -341,10 +340,10 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 			return null;
 		}
 	}
-	
+
 	/**
 	 * Provides the File to deploy based on the GAV set in the "artifact" property.
-	 * 
+	 *
 	 * @return Returns null of no artifact specified.
 	 */
 	private File getArtifact() throws MojoExecutionException {
@@ -352,11 +351,11 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 			Artifact resolvedArtifact = createArtifactFromGAV();
 
 			try {
-			    artifactResolver.resolve(resolvedArtifact, remoteRepositories, localRepository );
+				artifactResolver.resolve(resolvedArtifact, remoteRepositories, localRepository);
 			} catch (ArtifactNotFoundException ex) {
-			    throw new MojoExecutionException("Could not find deploy artifact ["+artifact+"]", ex);
+				throw new MojoExecutionException("Could not find deploy artifact [" + artifact + "]", ex);
 			} catch (ArtifactResolutionException ex) {
-			    throw new MojoExecutionException("Could not resolve deploy artifact ["+artifact+"]", ex);
+				throw new MojoExecutionException("Could not resolve deploy artifact [" + artifact + "]", ex);
 			}
 			return resolvedArtifact.getFile();
 		}
@@ -382,8 +381,8 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 			classifier = tokens[4];
 		}
 		return (classifier == null
-			? artifactFactory.createBuildArtifact( groupId, artifactId, version, packaging )
-			: artifactFactory.createArtifactWithClassifier( groupId, artifactId, version, packaging, classifier));
+				? artifactFactory.createBuildArtifact(groupId, artifactId, version, packaging)
+				: artifactFactory.createArtifactWithClassifier(groupId, artifactId, version, packaging, classifier));
 	}
 
 	/**
@@ -391,7 +390,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}.
 	 *
 	 * @return Returns the command or null
@@ -406,7 +405,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}.
 	 *
 	 * @return Returns the buildpack or null
@@ -421,7 +420,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}.
 	 *
 	 * @return Returns the stack or null
@@ -436,7 +435,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}.
 	 *
 	 * @return Returns the health check timeout or null
@@ -451,7 +450,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}.
 	 *
 	 * @return Returns the app startup timeout or null
@@ -466,7 +465,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * If the parameter is set via the command line (aka system property, then
 	 * that value is used). If not the pom.xml configuration parameter is used,
 	 * if available.
-	 *
+	 * <p/>
 	 * For a list of available properties see {@link SystemProperties}
 	 *
 	 * @return Returns the number of configured instance or null
@@ -521,8 +520,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 		if (property != null) {
 			return Boolean.valueOf(property);
-		}
-		else if (this.noStart == null) {
+		} else if (this.noStart == null) {
 			return DefaultConstants.NO_START;
 		} else {
 			return this.noStart;
@@ -531,24 +529,24 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 	public void createServices() throws MojoExecutionException {
 		List<CloudService> currentServices = getClient().getServices();
-		List<String> currentServicesNames = new ArrayList<String>(currentServices.size());
+		List<String> currentServicesNames = new ArrayList<>(currentServices.size());
 
 		for (CloudService currentService : currentServices) {
 			currentServicesNames.add(currentService.getName());
 		}
 
-		for (CloudServiceWithUserProvided service: getServices()) {
+		for (CloudServiceWithUserProvided service : getServices()) {
 			if (currentServicesNames.contains(service.getName())) {
 				getLog().debug(String.format("Service '%s' already exists", service.getName()));
-			}
-			else {
+			} else {
 				getLog().info(String.format("Creating Service '%s'", service.getName()));
 				Assert.configurationServiceNotNull(service, null);
 
 				try {
 					if (service.getLabel().equals("user-provided")) {
+						// TODO bad practice to have a marker field which is reset to null?
 						service.setLabel(null);
-						client.createUserProvidedService(service, service.getUserProvidedCredentials());
+						client.createUserProvidedService(service, service.getUserProvidedCredentials(), service.getSyslogDrainUrl());
 					} else {
 						client.createService(service);
 					}
@@ -562,8 +560,8 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	/**
 	 * Executes the actual war deployment to Cloud Foundry.
 	 *
-	 * @param client The Cloud Foundry client to use
-	 * @param file The file or directory to upload
+	 * @param client  The Cloud Foundry client to use
+	 * @param file    The file or directory to upload
 	 * @param appName The name of the application this file upload is for
 	 */
 	protected void uploadApplication(CloudFoundryClient client, File file, String appName) {
@@ -585,6 +583,8 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 
 	protected void showStagingStatus(StartingInfo startingInfo) {
 		if (startingInfo != null) {
+			getLog().debug(String.format("Staging log: %s.", startingInfo.getStagingFile()));
+
 			responseErrorHandler.addExpectedStatus(HttpStatus.NOT_FOUND);
 
 			int offset = 0;
@@ -596,6 +596,8 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 			}
 
 			responseErrorHandler.clearExpectedStatus();
+		} else {
+			getLog().error("Staging log does not exist.");
 		}
 	}
 
@@ -624,9 +626,10 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 			}
 
 			try {
+				getLog().info(String.format("Checking status until %s", new Date(appStartupExpiry)));
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
-				// ignore
+				getLog().error(e.getMessage());
 			}
 		}
 
@@ -662,10 +665,11 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 		int runningInstances = getRunningInstances(instances);
 		int flappingInstances = getFlappingInstances(instances);
 
+		getLog().info("Instance size: " + instances.size());
+
 		if (flappingInstances > 0) {
 			throw new MojoExecutionException("Application start unsuccessful");
-		}
-		else if (runningInstances == 0) {
+		} else if (runningInstances == 0) {
 			throw new MojoExecutionException("Application start timed out");
 		} else if (runningInstances > 0) {
 			if (uris.isEmpty()) {
@@ -674,6 +678,9 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 				getLog().info(String.format("Application '%s' is available at '%s'",
 						app.getName(), CommonUtils.collectionToCommaDelimitedString(uris, "http://")));
 			}
+		} else {
+			getLog().error(String.format("Expected instances: %d - Running instances: %d - Flapping instances: %d",
+					expectedInstances, runningInstances, flappingInstances));
 		}
 	}
 
@@ -681,7 +688,7 @@ abstract class AbstractApplicationAwareCloudFoundryMojo extends AbstractCloudFou
 	 * Adds custom domains when provided in the pom file.
 	 */
 	protected void addDomains() {
-		List<CloudDomain> domains  = getClient().getDomains();
+		List<CloudDomain> domains = getClient().getDomains();
 
 		List<String> currentDomains = new ArrayList<String>(domains.size());
 		for (CloudDomain domain : domains) {

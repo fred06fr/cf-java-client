@@ -16,13 +16,6 @@
 
 package org.cloudfoundry.client.lib.rest;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
 import org.cloudfoundry.client.lib.ApplicationLogListener;
 import org.cloudfoundry.client.lib.ClientHttpResponseCallback;
 import org.cloudfoundry.client.lib.CloudCredentials;
@@ -48,6 +41,13 @@ import org.cloudfoundry.client.lib.domain.InstancesInfo;
 import org.cloudfoundry.client.lib.domain.Staging;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.web.client.ResponseErrorHandler;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Interface defining operations available for the cloud controller REST client implementations
@@ -88,6 +88,8 @@ public interface CloudControllerClient {
 
 	void createUserProvidedService(CloudService service, Map<String, Object> credentials);
 
+	void createUserProvidedService(CloudService service, Map<String, Object> credentials, String syslogDrainUrl);
+
 	CloudService getService(String service);
 
 	void deleteService(String service);
@@ -103,16 +105,16 @@ public interface CloudControllerClient {
 	List<CloudApplication> getApplications();
 
 	CloudApplication getApplication(String appName);
-	
+
 	CloudApplication getApplication(UUID appGuid);
 
 	ApplicationStats getApplicationStats(String appName);
 
 	void createApplication(String appName, Staging staging, Integer memory, List<String> uris,
-	                       List<String> serviceNames);
+						   List<String> serviceNames);
 
 	void createApplication(String appName, Staging staging, Integer disk, Integer memory,
-	                       List<String> uris, List<String> serviceNames);
+						   List<String> uris, List<String> serviceNames);
 
 	void uploadApplication(String appName, File file, UploadStatusCallback callback) throws IOException;
 
@@ -206,4 +208,6 @@ public interface CloudControllerClient {
 	void registerRestLogListener(RestLogCallback callBack);
 
 	void unRegisterRestLogListener(RestLogCallback callBack);
+
+	List<CloudRoute> deleteOrphanedRoutes();
 }
