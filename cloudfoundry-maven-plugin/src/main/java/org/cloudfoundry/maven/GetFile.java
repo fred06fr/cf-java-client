@@ -20,12 +20,16 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.cloudfoundry.client.lib.ApplicationLogListener;
 import org.cloudfoundry.client.lib.CloudFoundryException;
 import org.cloudfoundry.client.lib.domain.ApplicationLog;
+import org.cloudfoundry.client.lib.domain.InstanceInfo;
 import org.cloudfoundry.maven.common.SystemProperties;
 import org.springframework.http.HttpStatus;
+
 import java.util.List;
 import java.io.File;
 import java.io.IOException;
+
 import org.apache.commons.io.FileUtils;
+
 import static org.cloudfoundry.maven.common.UiUtils.renderApplicationLogEntry;
 
 
@@ -49,6 +53,12 @@ public class GetFile extends AbstractApplicationAwareCloudFoundryMojo {
 	 * @parameter expression="${cf.destpath}"
 	 */
 	private String destpath;
+	
+	/**
+	 * Is getting file mandatory? (i.e. fails the build if can't).
+   * @parameter expression="${cf.isGetFileMandatory}"
+   */
+  private Boolean isGetFileMandatory;
 
 	/**
 	 * If the file path was specified via the command line ({@link SystemProperties})
@@ -82,27 +92,56 @@ public class GetFile extends AbstractApplicationAwareCloudFoundryMojo {
 			return this.destpath;
 		}
 	}
+	
+	/**
+   * If the mandatory option was specified via the command line ({@link SystemProperties})
+   * then use that property. Otherwise return the property as injected via Maven.
+   *
+   * @return Returns true if getting file is mandatory (i.e. fails the build if cant).
+   */
+  public Boolean getIsGetFileMandatory() {
+    final String property = getCommandlineProperty(SystemProperties.IS_GET_FILE_MANDATORY);
+    if (property != null) {
+      return Boolean.parseBoolean(property);
+    } else {
+      return this.isGetFileMandatory;
+    }
+  }
 
 	@Override
 	protected void doExecute() throws MojoExecutionException {
 		try {
-			getLog().info(String.format("Getting file '%s' for '%s'", getFilepath(), getAppname()));
-			String fileString = getClient().getFile(getAppname(), 0, getFilepath());
-			File destFile = new File(getDestpath());
-			File parent = destFile.getParentFile();
-			if(!parent.exists() && !parent.mkdirs()){
-			    throw new IllegalStateException("Couldn't create dir: " + parent);
+			getLog().info(String.format("Getting file '%s' for '%s', for all instances", getFilepath(), getAppname()));	
+			getLog().info("Getting instances list...");  
+			List<InstanceInfo> instances=getClient().getApplicationInstances(getAppname()).getInstances();
+			for(InstanceInfo instance:instances) {
+			  getLog().info(String.format("Getting file for instance %d", instance.getIndex()));  
+  			String fileString = getClient().getFile(getAppname(),instance.getIndex(), getFilepath());
+  			File destFile = new File(getDestpath());
+  			destFile=new File(destFile.getParent(),"instance_"+instance.getIndex()+"_"+destFile.getName());
+  			File parent = destFile.getParentFile();
+  			if(!parent.exists() && !parent.mkdirs()){
+  			    throw new IllegalStateException("Couldn't create dir: " + parent);
+  			}
+  			FileUtils.writeStringToFile(destFile, fileString);
+  			getLog().info(String.format("File '%s' of application '%s' for instance %d available at '%s'", getFilepath(), getAppname(),instance.getIndex(), destFile.getPath()));
 			}
-			FileUtils.writeStringToFile(destFile, fileString);
-			getLog().info(String.format("File '%s' of application '%s' available at '%s'", getFilepath(), getAppname(), getDestpath()));
 		} catch (CloudFoundryException e) {
 			if (HttpStatus.NOT_FOUND.equals(e.getStatusCode())) {
 				throw new MojoExecutionException(String.format("Application '%s' does not exist", getAppname()), e);
 			} else {
-				throw new MojoExecutionException(String.format("Error getting file for application '%s'. Error message: '%s'. Description: '%s'", getAppname(), e.getMessage(), e.getDescription()), e);
+			  if (!getIsGetFileMandatory().booleanValue()) {
+			      getLog().warn(String.format("Error getting file for application '%s'. Error message: '%s'. Description: '%s'", getAppname(), e.getMessage(), e.getDescription()), e);            			    
+			  } else {
+			      throw new MojoExecutionException(String.format("Error getting file for application '%s'. Error message: '%s'. Description: '%s'", getAppname(), e.getMessage(), e.getDescription()), e);
+			  }
 			}
-		} catch (IOException e) {
-			
-		}
+		} catch (Exception e) {
+		  if (!getIsGetFileMandatory().booleanValue()) {
+        getLog().warn(String.format("Error getting file for application '%s'. Error message: '%s'", getAppname(), e.getMessage()), e);                     
+      } else {
+         throw new MojoExecutionException(String.format("Error getting file for application '%s'. Error message: '%s'", getAppname(), e.getMessage()), e);
+      }
+    }
 	}
 }

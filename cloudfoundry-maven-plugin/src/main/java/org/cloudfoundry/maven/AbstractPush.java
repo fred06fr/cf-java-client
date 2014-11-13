@@ -107,17 +107,32 @@ public class AbstractPush extends AbstractApplicationAwareCloudFoundryMojo {
 
 		if (!isNoStart()) {
 			getLog().info("Starting application");
-
-			try {
-				final StartingInfo startingInfo = getClient().startApplication(appname);
-				showStagingStatus(startingInfo);
-
-				final CloudApplication app = getClient().getApplication(appname);
-				showStartingStatus(app);
-				showStartResults(app, uris);
-			} catch (CloudFoundryException e) {
-                throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'",
-                        getAppname(), e.getMessage(), e.getDescription()), e);
+			int nbRetries=0;
+			while(true) {
+  			try {
+  				final StartingInfo startingInfo = getClient().startApplication(appname);
+  				showStagingStatus(startingInfo);
+  				final CloudApplication app = getClient().getApplication(appname);
+  				showStartingStatus(app);
+  				showStartResults(app, uris);
+  				break;
+  			} catch (CloudFoundryException e) {
+  			  if (nbRetries++>=3) {
+                  throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'",
+                          getAppname(), e.getMessage(), e.getDescription()), e);
+  			  } else {
+  			    getLog().warn(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'. Retrying (attempt %d)...",
+                getAppname(), e.getMessage(), e.getDescription(),nbRetries), e);  			    
+  			  }
+  			} catch (Exception e) {
+          if (nbRetries++>=3) {
+                  throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'.",
+                          getAppname(), e.getMessage()), e);
+          } else {
+            getLog().warn(String.format("Error while starting application '%s'. Error message: '%s'. Retrying (attempt %d)...",
+                getAppname(), e.getMessage(),nbRetries), e);            
+          }
+        }
 			}
 		}
 	}

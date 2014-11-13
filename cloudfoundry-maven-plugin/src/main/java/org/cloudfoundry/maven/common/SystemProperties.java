@@ -42,9 +42,10 @@ public enum SystemProperties {
     STACK("stack"),
     TARGET("target"),
     URL("url"),
-	USERNAME("username"),
-	FILE_PATH("filepath"),
-	DEST_PATH("destpath");
+  	USERNAME("username"),
+  	FILE_PATH("filepath"),
+  	DEST_PATH("destpath"),
+  	IS_GET_FILE_MANDATORY("isGetFileMandatory");
 
     private String property;
     private String xmlElement;
