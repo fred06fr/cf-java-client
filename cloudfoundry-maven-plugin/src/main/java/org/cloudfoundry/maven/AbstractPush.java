@@ -19,6 +19,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.cloudfoundry.client.lib.CloudFoundryException;
 import org.cloudfoundry.client.lib.StartingInfo;
 import org.cloudfoundry.client.lib.domain.CloudApplication;
+import org.cloudfoundry.client.lib.domain.CloudApplication.AppState;
 import org.cloudfoundry.client.lib.domain.CloudService;
 import org.cloudfoundry.client.lib.domain.Staging;
 import org.springframework.http.HttpStatus;
@@ -116,23 +117,37 @@ public class AbstractPush extends AbstractApplicationAwareCloudFoundryMojo {
   				showStartingStatus(app);
   				showStartResults(app, uris);
   				break;
-  			} catch (CloudFoundryException e) {
-  			  if (nbRetries++>=3) {
-                  throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'",
-                          getAppname(), e.getMessage(), e.getDescription()), e);
-  			  } else {
-  			    getLog().warn(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'. Retrying (attempt %d)...",
-                getAppname(), e.getMessage(), e.getDescription(),nbRetries), e);  			    
-  			  }
   			} catch (Exception e) {
-          if (nbRetries++>=3) {
-                  throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'.",
-                          getAppname(), e.getMessage()), e);
-          } else {
-            getLog().warn(String.format("Error while starting application '%s'. Error message: '%s'. Retrying (attempt %d)...",
-                getAppname(), e.getMessage(),nbRetries), e);            
-          }
-        }
+  			  String desc=((e instanceof CloudFoundryException) ? ((CloudFoundryException)e).getDescription() : "");
+  			  if (nbRetries++>=5) {
+                  throw new MojoExecutionException(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'",
+                          getAppname(), e.getMessage(), desc), e);
+  			  } else {
+  			    getLog().warn(String.format("Error while starting application '%s'. Error message: '%s'. Description: '%s'. Stopping app and retrying (attempt %d)...",
+                getAppname(), e.getMessage(), desc,nbRetries), e);  		
+  			    try {
+  			      // need to wait, else subsequent start fails with 'failed to stage application: another staging request was initiated'
+  	          getClient().stopApplication(appname);
+  	          boolean stopped=false;
+  	          for(int i=0;i<10;i++) {  	            
+  	            getLog().info("waiting for stop...");
+  	            Thread.sleep(10000);
+  	            if ((getClient().getApplication(appname).getState()==AppState.STOPPED) && (getClient().getApplication(appname).getInstances()==0)) {
+                  stopped=true;
+                  break;
+                }
+  	          }
+  	          if (stopped) {
+  	            getLog().info("App stopped");
+  	          } else {
+  	            getLog().warn("NOT stopped, trying to restart anyway");
+  	          }  	          
+  	        } catch (Exception ex) {  	          
+  	            getLog().warn(String.format("Error stopping application '%s'. Error message: '%s'. Continuing for restart.",
+  	                getAppname(), ex.getMessage()), ex);            
+  	        }
+  			  }
+  			} 
 			}
 		}
 	}
